@@ -7,6 +7,7 @@ namespace App\Core;
 use App\Core\Middleware\Pipeline;
 use App\Core\Middleware\CorsMiddleware;
 use App\Core\Middleware\SessionMiddleware;
+use App\Core\Middleware\InternalAuthMiddleware;
 use App\Core\Middleware\JsonBodyParser;
 use App\Features\Clicks\ClickController;
 use App\Features\Clicks\ClickRepository;
@@ -32,6 +33,8 @@ use App\Features\Tools\ToolService;
 use App\Features\Votes\VoteController;
 use App\Features\Votes\VoteRepository;
 use App\Features\Votes\VoteService;
+use App\Features\Settings\SettingsController;
+use App\Features\Settings\SettingsRepository;
 
 use App\Features\Users\UserController;
 use App\Features\Users\UserRepository;
@@ -39,6 +42,14 @@ use App\Features\Users\UserService;
 use App\Features\PasswordReset\PasswordResetController;
 use App\Features\PasswordReset\PasswordResetRepository;
 use App\Features\PasswordReset\PasswordResetService;
+use App\Features\OAuth\AccessTokenRepository as OAuthAccessTokenRepository;
+use App\Features\OAuth\AuthCodeRepository as OAuthAuthCodeRepository;
+use App\Features\OAuth\AuthorizationServerFactory;
+use App\Features\OAuth\ClientRepository as OAuthClientRepository;
+use App\Features\OAuth\OAuthController;
+use App\Features\OAuth\OAuthRepository;
+use App\Features\OAuth\RefreshTokenRepository as OAuthRefreshTokenRepository;
+use App\Features\OAuth\ScopeRepository as OAuthScopeRepository;
 use App\Shared\EmailService;
 use App\Shared\CurrentUser;
 use PDO;
@@ -76,6 +87,7 @@ final class Application
         $corsOrigin = $this->config['cors_origin'] ?? '*';
         $this->pipeline->pipe(new CorsMiddleware($corsOrigin));
         $this->pipeline->pipe(new SessionMiddleware());
+        $this->pipeline->pipe(new InternalAuthMiddleware($this->config['oauth']['internal_shared_secret'] ?? ''));
         $this->pipeline->pipe(new JsonBodyParser());
     }
 
@@ -134,6 +146,7 @@ final class Application
             $userRepo,
             $emailService,
             $this->config['agent_webhook_url'] ?? '',
+            $this->config['oauth']['frontend_url'] ?? 'http://localhost:5173',
         );
 
         $this->controllers[ToolController::class] = new ToolController($toolService);
@@ -143,8 +156,11 @@ final class Application
         $this->controllers[ReportController::class] = new ReportController($reportService, $currentUser);
         $this->controllers[ClickController::class] = new ClickController($clickService, $currentUser);
         $this->controllers[CollectionController::class] = new CollectionController($collectionService, $currentUser);
+        $settingsRepo = new SettingsRepository($pdo);
+        $this->controllers[SettingsController::class] = new SettingsController($settingsRepo, $currentUser);
+
         $agentRepo = new AgentRepository($pdo);
-        $agentService = new AgentService($agentRepo);
+        $agentService = new AgentService($agentRepo, $submissionService, $settingsRepo);
 
         $this->controllers[AgentController::class] = new AgentController($agentService, $currentUser);
         $passwordResetRepo = new PasswordResetRepository($pdo);
@@ -157,6 +173,32 @@ final class Application
         $this->controllers[PasswordResetController::class] = new PasswordResetController($passwordResetService);
 
         $this->controllers[SubmissionController::class] = new SubmissionController($submissionService, $currentUser);
+
+        $oauthConfig = $this->config['oauth'];
+        $oauthRepo = new OAuthRepository($pdo);
+        $oauthClientRepo = new OAuthClientRepository($oauthRepo);
+        $oauthScopeRepo = new OAuthScopeRepository($oauthRepo, $userRepo);
+        $oauthAccessTokenRepo = new OAuthAccessTokenRepository(
+            $oauthRepo,
+            $oauthConfig['issuer'],
+            $oauthConfig['resource_server'],
+        );
+        $oauthAuthCodeRepo = new OAuthAuthCodeRepository($oauthRepo);
+        $oauthRefreshTokenRepo = new OAuthRefreshTokenRepository($oauthRepo);
+        $authorizationServer = (new AuthorizationServerFactory())->build(
+            $oauthClientRepo,
+            $oauthAccessTokenRepo,
+            $oauthScopeRepo,
+            $oauthAuthCodeRepo,
+            $oauthRefreshTokenRepo,
+            $oauthConfig,
+        );
+        $this->controllers[OAuthController::class] = new OAuthController(
+            $authorizationServer,
+            $oauthRepo,
+            $userService,
+            $oauthConfig,
+        );
     }
 
     /**

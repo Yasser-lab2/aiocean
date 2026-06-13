@@ -6,6 +6,7 @@ import { HomePage } from "./pages/HomePage"
 import { LandingPage } from "./pages/LandingPage"
 import { LoginPage } from "./pages/LoginPage"
 import { DashboardPage } from "./pages/DashboardPage"
+import { SubmissionDetailPage } from "./pages/SubmissionDetailPage"
 import { AdminPage } from "./pages/AdminPage"
 import { ToolDetailPage } from "./pages/ToolDetailPage"
 import { SignUpPage } from "./pages/SignUp"
@@ -13,6 +14,7 @@ import { ProfilePage } from "./pages/ProfilePage"
 import { SubmitToolPage } from "./pages/SubmitToolPage"
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage"
 import { ResetPasswordPage } from "./pages/ResetPasswordPage"
+import { AuthorizePage } from "./pages/AuthorizePage"
 
 import { AuthProvider, useAuth } from "./hooks/use-auth"
 import { Toaster } from "./components/ui/sonner"
@@ -71,6 +73,12 @@ export function App() {
               </AdminRoute>
             } />
 
+            <Route path="/dashboard/submissions/:id" element={
+              <AdminRoute>
+                <SubmissionDetailPage />
+              </AdminRoute>
+            } />
+
             <Route path="/admin" element={
               <AdminRoute>
                 <AdminPage />
@@ -95,6 +103,7 @@ export function App() {
           <Route path="/signup" element={<SignUpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/authorize" element={<AuthorizePage />} />
 
         </Routes>
       </AuthProvider>
